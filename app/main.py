@@ -1,7 +1,15 @@
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
 import httpx
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    app.state.http_client = httpx.AsyncClient()
+    print("client created")
+    yield
+    await app.state.http_client.aclose()
+
+app = FastAPI(lifespan=lifespan)
 
 @app.get("/health")
 def health():
@@ -9,7 +17,5 @@ def health():
 
 @app.get("/links")
 async def getLinks():
-    async with httpx.AsyncClient() as client:
-        response = await client.get("http://localhost:8000/links")
-        return response.json()
-
+    response = await app.state.http_client.get("http://localhost:8000/links")
+    return response.json()
