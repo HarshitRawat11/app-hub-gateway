@@ -1,7 +1,7 @@
 [project]
 name = "gateway"
 version = "0.1.0"
-description = "Add your description here"
+description = "Entry-point service: single front door, routes to links-service"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -9,3 +9,18 @@ dependencies = [
     "httpx>=0.28.1",
     "uvicorn>=0.52.4",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+# pythonpath = ["."] puts gateway/ on sys.path so `from app.main import app`
+# resolves. Without it pytest inserts only tests/ and the import fails with
+# ModuleNotFoundError -- which reads like a broken install, not a path problem.
+pythonpath = ["."]
+testpaths = ["tests"]
+# fake_upstream.py is a manual dev fixture, not a test module. Without this
+# pytest would try to collect it, and it exits at import time on sys.argv.
+addopts = "--ignore=tests/fake_upstream.py"
