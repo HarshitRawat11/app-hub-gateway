@@ -7,9 +7,13 @@ import os
 logger = logging.getLogger(__name__)
 
 # Where links-service lives. This is config, not code: "http://localhost:8000"
-# on a laptop, "http://links-service:8000" inside the app-hub namespace. The
+# on a laptop, "http://links-service:80" inside the app-hub namespace. The
 # Deployment's env: block supplies the second one, so the same image runs in
 # both places without a rebuild.
+#
+# Note the port changes as well as the host, which is easy to miss: 8000 is
+# the port this process and links-service LISTEN on, but the links-service
+# Service exposes 80 and forwards to 8000. A consumer addresses the Service.
 #
 # rstrip("/") because a trailing slash in the variable produces "...8000//links",
 # which some servers tolerate and some 404 on -- a miserable bug to read, since
@@ -38,7 +42,7 @@ async def get_links():
         response = await app.state.http_client.get(url)
     except httpx2.TimeoutException:
         # The detail strings stay fixed. str(e) from httpx2 contains the URL it
-        # tried, which in-cluster is "http://links-service:8000/links" -- that
+        # tried, which in-cluster is "http://links-service:80/links" -- that
         # is internal topology, and the caller has no business seeing it. The
         # real error goes to the logs, where it is actually useful.
         logger.warning("timeout after 3s calling %s", url)

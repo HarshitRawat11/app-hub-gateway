@@ -29,7 +29,7 @@ Runs on port **8001**. `links-service` owns 8000, and both run side by side in l
 
 Returning `500` for any of these would claim *gateway* failed, sending you to debug the wrong service.
 
-Error bodies are **fixed strings**. httpx puts the attempted URL in its exception message, which in-cluster is `http://links-service:8000/links` — internal topology, handed to anyone who curls the public endpoint. The real exception goes to the logs instead.
+Error bodies are **fixed strings**. httpx2 puts the attempted URL in its exception message, which in-cluster is `http://links-service:80/links` — internal topology, handed to anyone who curls the public endpoint. The real exception goes to the logs instead.
 
 ### `/health` deliberately does not check the upstream
 
@@ -43,7 +43,7 @@ It backs the Kubernetes **liveness** probe. If it verified `links-service`, then
 |---|---|---|
 | `LINKS_SERVICE_URL` | `http://localhost:8000` | Base URL of `links-service`. A trailing slash is stripped. |
 
-The default is doing as much work as the variable: with it, local development needs zero configuration, and in the cluster the Deployment's `env:` block supplies `http://links-service:8000`. **Same image, same bytes, different behaviour** — which is why you build a container once and promote it rather than rebuilding per environment.
+The default is doing as much work as the variable: with it, local development needs zero configuration, and in the cluster the Deployment's `env:` block supplies `http://links-service:80`. **Note the port changes too** — 8000 is what the *containers* listen on, but the `links-service` Service exposes **80** and forwards to 8000. A consumer addresses the Service, not the container. **Same image, same bytes, different behaviour** — which is why you build a container once and promote it rather than rebuilding per environment.
 
 Read once at module scope, so `"which URL is this pod using?"` has exactly one answer for the life of the process.
 
@@ -65,7 +65,7 @@ curl http://localhost:8001/links
 uv run pytest
 ```
 
-15 tests. `links-service` is never started — every upstream response is faked with `httpx.MockTransport`, which replaces the transport underneath the real `AsyncClient`, so the client, the `await`, the timeout and the exception handling are all genuine while nothing touches a socket. That is what makes the `502` and `504` paths testable at all.
+15 tests. `links-service` is never started — every upstream response is faked with `httpx2.MockTransport`, which replaces the transport underneath the real `AsyncClient`, so the client, the `await`, the timeout and the exception handling are all genuine while nothing touches a socket. That is what makes the `502` and `504` paths testable at all.
 
 `tests/fake_upstream.py` is a separate manual fixture for driving a real misbehaving upstream on a spare port:
 
@@ -103,11 +103,15 @@ The Kubernetes version differs only in who supplies the DNS name — a Service i
 
 ## Deployment
 
-Not deployed yet — `S-01` step 6. Image will go to ECR at `314146298861.dkr.ecr.ap-south-1.amazonaws.com/app-hub/gateway`; manifests live in the separate `app-hub-manifests` repo.
+**Deployed and verified on EKS, 2026-09-10.** Image at `314146298861.dkr.ecr.ap-south-1.amazonaws.com/app-hub/gateway`, tagged with the git SHA it was built from; manifests live in the separate `app-hub-manifests` repo. Two replicas, since gateway holds no state.
 
-The Service will be **`ClusterIP`, not `LoadBalancer`**: one ELB per service does not scale and each one bills. A shared ALB via Ingress is `E-06`.
+The Service is **`ClusterIP`, not `LoadBalancer`**: one ELB per service does not scale and each one bills. A shared ALB via Ingress is `E-06`, which will also flip `links-service` to `ClusterIP` so it stops being publicly reachable — the point of having a gateway. Until then:
 
-The short DNS name `links-service` only resolves **within the same namespace**, so `gateway` must land in `app-hub` alongside it. In `default` it fails with a DNS resolution error that reads like a network problem.
+```bash
+kubectl -n app-hub port-forward svc/gateway 8001:8001
+```
+
+**In-cluster, gateway reaches `links-service` at `http://links-service:80` — the Service's port, not the container's 8000.** Getting that wrong produces `ConnectTimeout` (DNS resolves, packets are dropped), not `ConnectError`. The short DNS name also only resolves **within the same namespace**, so gateway must land in `app-hub` alongside it.
 
 ## Background
 
