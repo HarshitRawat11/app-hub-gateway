@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
-import httpx
+import httpx2
 import logging
 import os
 
@@ -18,7 +18,7 @@ LINKS_SERVICE_URL = os.getenv("LINKS_SERVICE_URL", "http://localhost:8000").rstr
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.http_client = httpx.AsyncClient(timeout=3.0)
+    app.state.http_client = httpx2.AsyncClient(timeout=3.0)
     yield
     await app.state.http_client.aclose()
 
@@ -36,14 +36,14 @@ async def get_links():
     url = f"{LINKS_SERVICE_URL}/links"
     try:
         response = await app.state.http_client.get(url)
-    except httpx.TimeoutException:
-        # The detail strings stay fixed. str(e) from httpx contains the URL it
+    except httpx2.TimeoutException:
+        # The detail strings stay fixed. str(e) from httpx2 contains the URL it
         # tried, which in-cluster is "http://links-service:8000/links" -- that
         # is internal topology, and the caller has no business seeing it. The
         # real error goes to the logs, where it is actually useful.
         logger.warning("timeout after 3s calling %s", url)
         raise HTTPException(status_code=504, detail="links-service timed out")
-    except httpx.RequestError as e:
+    except httpx2.RequestError as e:
         logger.warning("cannot reach %s: %s", url, e)
         raise HTTPException(status_code=503, detail="links-service unavailable")
     if response.status_code >= 400:

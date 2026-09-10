@@ -5,7 +5,7 @@ Run from gateway/:
     uv run pytest -v
 
 `links-service` is never started. Every upstream response is faked with
-`httpx.MockTransport`, which swaps out the transport layer underneath the real
+`httpx2.MockTransport`, which swaps out the transport layer underneath the real
 `AsyncClient` -- so the client, the await, the timeout config and the exception
 handling are all the genuine article, but nothing touches a socket.
 
@@ -13,17 +13,16 @@ That is what makes the 502 and 504 paths testable at all. Previously they
 needed `tests/fake_upstream.py` running on a spare port, which is fine for a
 one-off check and useless in CI.
 
-Note on the deprecation warning you will see: starlette's TestClient now
-prefers `httpx2`. `links-service` moved, because there `httpx` was only ever a
-test dependency. Here it is a *runtime* dependency for the AsyncClient, and
-the two APIs differ -- so migrating is a real decision, tracked as D-17, not
-something to slip in via a test file.
+Both services are on `httpx2` as of 2026-09-10 (D-17). gateway moved while it
+was still undeployed, which was the cheapest moment: its whole surface is one
+AsyncClient, one get and three exception types, and every name it uses is
+identical in the new package.
 """
 
 import contextlib
 import importlib
 
-import httpx
+import httpx2
 import pytest
 from fastapi.testclient import TestClient
 
@@ -50,8 +49,8 @@ def gateway_with_upstream(handler):
     """
     with TestClient(app) as client:
         real = app.state.http_client
-        app.state.http_client = httpx.AsyncClient(
-            transport=httpx.MockTransport(handler), timeout=3.0
+        app.state.http_client = httpx2.AsyncClient(
+            transport=httpx2.MockTransport(handler), timeout=3.0
         )
         try:
             yield client
@@ -62,12 +61,12 @@ def gateway_with_upstream(handler):
 def responds(status, json=None):
     """An upstream that answers with a given status."""
     def handler(request):
-        return httpx.Response(status, json=json if json is not None else {})
+        return httpx2.Response(status, json=json if json is not None else {})
     return handler
 
 
 def raises(exc):
-    """An upstream that fails the way httpx would fail."""
+    """An upstream that fails the way httpx2 would fail."""
     def handler(request):
         raise exc
     return handler
@@ -88,7 +87,7 @@ def test_gateway_requests_the_links_path_on_the_configured_base():
 
     def handler(request):
         seen["url"] = str(request.url)
-        return httpx.Response(200, json=[])
+        return httpx2.Response(200, json=[])
 
     with gateway_with_upstream(handler) as client:
         client.get("/links")
@@ -99,7 +98,7 @@ def test_gateway_requests_the_links_path_on_the_configured_base():
 # ---------------------------------------------------------- failure mapping --
 
 def test_unreachable_upstream_maps_to_503():
-    with gateway_with_upstream(raises(httpx.ConnectError("refused"))) as client:
+    with gateway_with_upstream(raises(httpx2.ConnectError("refused"))) as client:
         r = client.get("/links")
     assert r.status_code == 503
     assert r.json() == {"detail": "links-service unavailable"}
@@ -112,7 +111,7 @@ def test_slow_upstream_maps_to_504():
     correctly. Put `RequestError` first and it swallows timeouts too, this
     returns 503, and you would never see a 504 in production either.
     """
-    with gateway_with_upstream(raises(httpx.ReadTimeout("too slow"))) as client:
+    with gateway_with_upstream(raises(httpx2.ReadTimeout("too slow"))) as client:
         r = client.get("/links")
     assert r.status_code == 504
     assert r.json() == {"detail": "links-service timed out"}
@@ -122,7 +121,7 @@ def test_slow_upstream_maps_to_504():
 def test_upstream_error_status_maps_to_502(upstream_status):
     """A 4xx/5xx from upstream is a *successful* HTTP exchange.
 
-    httpx raises nothing -- the connection opened, the request went, a
+    httpx2 raises nothing -- the connection opened, the request went, a
     well-formed response came back. So this branch cannot be an `except`; it
     has to be an explicit status check, and it has to run before `.json()`.
     """
@@ -141,7 +140,7 @@ def test_non_json_error_body_still_maps_to_502():
     If the status check is ever moved below `.json()`, this test fails.
     """
     def handler(request):
-        return httpx.Response(500, text="<html><body>500</body></html>",
+        return httpx2.Response(500, text="<html><body>500</body></html>",
                               headers={"Content-Type": "text/html"})
 
     with gateway_with_upstream(handler) as client:
@@ -152,12 +151,12 @@ def test_non_json_error_body_still_maps_to_502():
 # ------------------------------------------------------- information leakage --
 
 @pytest.mark.parametrize("handler,expected", [
-    (raises(httpx.ConnectError("boom")), 503),
-    (raises(httpx.ReadTimeout("boom")), 504),
+    (raises(httpx2.ConnectError("boom")), 503),
+    (raises(httpx2.ReadTimeout("boom")), 504),
     (responds(500), 502),
 ])
 def test_error_responses_never_leak_the_upstream_address(handler, expected):
-    """httpx puts the attempted URL in its exception message.
+    """httpx2 puts the attempted URL in its exception message.
 
     Passing `str(e)` through as `detail` handed the caller
     `http://links-service:8000/links` -- internal topology, to anyone curling
@@ -182,7 +181,7 @@ def test_health_does_not_depend_on_the_upstream():
     Kubernetes -- one outage becoming two, with the restart noise burying the
     real cause. So: upstream is hard down here, and /health must still be 200.
     """
-    with gateway_with_upstream(raises(httpx.ConnectError("upstream is gone"))) as client:
+    with gateway_with_upstream(raises(httpx2.ConnectError("upstream is gone"))) as client:
         assert client.get("/links").status_code == 503   # upstream really is down
         r = client.get("/health")
     assert r.status_code == 200
