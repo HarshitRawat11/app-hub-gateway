@@ -29,10 +29,10 @@ def health():
     # Deliberately does NOT check links-service. This backs the liveness probe,
     # so a failing upstream would get gateway killed and restarted as well --
     # one outage becoming two, with the restarts hiding the real cause.
-    return {"status":'ok'}
+    return {"status": "ok"}
 
 @app.get("/links")
-async def getLinks():
+async def get_links():
     url = f"{LINKS_SERVICE_URL}/links"
     try:
         response = await app.state.http_client.get(url)
