@@ -1,0 +1,188 @@
+/* Light and dark both defined, dark by prefers-color-scheme rather than a
+   toggle. A start page is opened dozens of times a day and never configured;
+   following the OS is the setting most likely to already be right. */
+:root {
+  --bg: #fbfbfa;
+  --surface: #ffffff;
+  --border: #e3e1dd;
+  --text: #1f1e1c;
+  --muted: #6f6c67;
+  --accent: #2f6f4f;
+  --danger: #a13b2d;
+  --radius: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17171a;
+    --surface: #1f1f23;
+    --border: #33333a;
+    --text: #eceaE6;
+    --muted: #9a968e;
+    --accent: #6fc79a;
+    --danger: #e0806f;
+  }
+}
+
+* { box-sizing: border-box; }
+
+/* The `hidden` attribute is only `display: none` in the browser's default
+   stylesheet, and ANY author rule that sets `display` outranks it. Both
+   `#add-form` and `#banner` below set one, so without this they render on
+   load despite being marked hidden -- and the JS toggling `.hidden` silently
+   does nothing. Every server-side test still passed; only opening the page
+   showed it. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  padding: 1.5rem clamp(1rem, 4vw, 3rem) 3rem;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+input, button {
+  font: inherit;
+  color: inherit;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.7rem;
+  background: var(--surface);
+}
+
+input:focus-visible, button:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#search { flex: 1 1 14rem; min-width: 0; }
+
+button { cursor: pointer; }
+button:hover { border-color: var(--muted); }
+
+#add-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+#add-form input { flex: 1 1 10rem; min-width: 0; }
+#add-form button[type="submit"] { border-color: var(--accent); color: var(--accent); }
+
+#banner {
+  margin-bottom: 1.25rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--danger);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  color: var(--danger);
+  background: var(--surface);
+}
+
+#banner code {
+  font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+  font-size: 0.85em;
+}
+
+section { margin-bottom: 2rem; }
+
+h2 {
+  margin: 0 0 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+li:hover { border-color: var(--muted); }
+
+.icon { flex: none; width: 1.4rem; text-align: center; font-size: 1.05rem; }
+
+li a {
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+li a:hover { color: var(--accent); }
+
+.host {
+  display: block;
+  font-size: 0.76rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Delete stays invisible until the row is hovered or the button itself is
+   focused, so keyboard users can still reach it. Always-visible delete
+   buttons on a page you click all day are a mistake waiting to happen. */
+.del {
+  flex: none;
+  padding: 0.1rem 0.4rem;
+  border-color: transparent;
+  background: none;
+  color: var(--muted);
+  opacity: 0;
+}
+
+li:hover .del, .del:focus-visible { opacity: 1; }
+.del:hover { color: var(--danger); }
+
+.empty { color: var(--muted); }
+
+footer {
+  display: flex;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+footer a { color: inherit; }

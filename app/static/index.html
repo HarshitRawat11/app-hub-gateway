@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>app-hub</title>
+  <!-- Served from gateway itself, so every path here is same-origin and
+       relative. No CDN on purpose: the container runs read-only with no
+       outbound internet guaranteed, and a start page that goes blank because
+       a CDN is down is not a start page. -->
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🗂️</text></svg>">
+</head>
+<body>
+  <header>
+    <h1>app-hub</h1>
+    <input id="search" type="search" placeholder="Search…  (press /)"
+           autocomplete="off" spellcheck="false" aria-label="Filter links">
+    <button id="toggle-add" type="button" aria-expanded="false">+ Add</button>
+  </header>
+
+  <!-- Hidden until the button is pressed. A start page is for starting; the
+       form is the rare path, not the common one. -->
+  <form id="add-form" hidden>
+    <input name="name" placeholder="Name" required maxlength="80">
+    <input name="url" placeholder="https://…" required type="url">
+    <input name="category" placeholder="Category" required maxlength="40" list="categories">
+    <datalist id="categories"></datalist>
+    <input name="icon" placeholder="Icon (emoji, optional)" maxlength="8">
+    <button type="submit">Save</button>
+    <button type="button" id="cancel-add">Cancel</button>
+  </form>
+
+  <!-- role=alert so a screen reader announces a failure rather than leaving
+       the page silently empty. -->
+  <div id="banner" role="alert" hidden></div>
+
+  <main id="links" aria-busy="true"></main>
+
+  <footer>
+    <span id="count"></span>
+    <a href="/health">/health</a>
+    <a href="/docs">API</a>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

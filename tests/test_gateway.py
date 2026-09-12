@@ -29,9 +29,13 @@ from fastapi.testclient import TestClient
 from app import main
 from app.main import app
 
+# `id` is a UUID string, not an int, since C-06. gateway never parses it --
+# it forwards whatever links-service sends -- so this fixture would have gone
+# on passing with the old shape while describing an API that no longer exists.
+# Exactly the kind of quietly-wrong claim this project keeps finding.
 UPSTREAM_PAYLOAD = [
-    {"id": 1, "name": "n8n", "url": "http://localhost:5678",
-     "category": "tools", "icon": "workflow"}
+    {"id": "7c9f4b1e-2a6d-4f88-9b0c-1d3e5a7f2c40", "name": "n8n",
+     "url": "http://localhost:5678", "category": "tools", "icon": "workflow"}
 ]
 
 
@@ -46,16 +50,29 @@ def gateway_with_upstream(handler):
     Without the `with`, `lifespan` never runs, `app.state.http_client` never
     exists, and every test fails with AttributeError rather than anything
     informative.
+
+    `main.app` is resolved HERE, on every call, rather than using the `app`
+    imported at the top of this file. The two config tests below call
+    `importlib.reload(main)`, and reload re-executes the module into the SAME
+    namespace dict -- so `main.app` is rebound to a fresh FastAPI instance
+    while this file's imported `app` still points at the old one. The route
+    handlers look up `app` in the module namespace at call time, so they would
+    then read the NEW app's state while this helper wrote to the OLD one, and
+    every request would fail with exactly the AttributeError described above.
+
+    It went unnoticed while this was the only test file, because the reload
+    tests run last. `test_proxy_crud.py` sorts after it and found it at once.
     """
-    with TestClient(app) as client:
-        real = app.state.http_client
-        app.state.http_client = httpx2.AsyncClient(
+    current = main.app
+    with TestClient(current) as client:
+        real = current.state.http_client
+        current.state.http_client = httpx2.AsyncClient(
             transport=httpx2.MockTransport(handler), timeout=3.0
         )
         try:
             yield client
         finally:
-            app.state.http_client = real
+            current.state.http_client = real
 
 
 def responds(status, json=None):

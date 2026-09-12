@@ -15,7 +15,20 @@ Runs on port **8001**. `links-service` owns 8000, and both run side by side in l
 | Method | Path | Purpose | Returns |
 |---|---|---|---|
 | `GET` | `/health` | Liveness probe. **Does not check `links-service`** — see below. | `{"status": "ok"}` |
-| `GET` | `/links` | Proxies to `links-service` | Whatever `links-service` returns, or `502`/`503`/`504` |
+| `GET` | `/links` | Proxies to `links-service` | The link list, or `502`/`503`/`504` |
+| `GET` | `/links/{id}` | Proxies to `links-service` | The link, `404` if unknown, or `502`/`503`/`504` |
+| `POST` | `/links` | Proxies to `links-service` | `201` + `Location`, `422` if invalid, or `502`/`503`/`504` |
+| `DELETE` | `/links/{id}` | Proxies to `links-service` | `200`, `404` if unknown, or `502`/`503`/`504` |
+| `GET` | `/` | The dashboard (`S-03`) | HTML |
+| `GET` | `/static/*` | Dashboard assets | CSS / JS |
+
+### Not every upstream 4xx is a gateway fault
+
+`404` and `422` above are **passed through**, and that is a deliberate exception to the mapping below. A `404` from `GET /links/{id}` is the correct answer to a question about an id that does not exist; a `422` from `POST` is about what the **caller** sent. Reporting either as `502` would say *the server is broken* and send someone to read gateway's logs instead of checking their own request.
+
+`GET /links` passes **nothing** through, because the collection always exists — a `404` there really does mean links-service is serving something other than what gateway thinks it is. The asymmetry is the point.
+
+`POST` forwards the body as an opaque `dict` rather than validating it. links-service owns the link schema; restating it here would give the project two definitions that drift, and a gateway that silently strips a field it has not been told about looks exactly like a client that never sent one.
 
 ## Failure mapping — the point of the service
 
@@ -65,7 +78,7 @@ curl http://localhost:8001/links
 uv run pytest
 ```
 
-15 tests. `links-service` is never started — every upstream response is faked with `httpx2.MockTransport`, which replaces the transport underneath the real `AsyncClient`, so the client, the `await`, the timeout and the exception handling are all genuine while nothing touches a socket. That is what makes the `502` and `504` paths testable at all.
+47 tests, in three files: `test_gateway.py` (the original failure mapping), `test_proxy_crud.py` (the other three routes and the passthrough rule) and `test_dashboard.py` (the static page). `links-service` is never started — every upstream response is faked with `httpx2.MockTransport`, which replaces the transport underneath the real `AsyncClient`, so the client, the `await`, the timeout and the exception handling are all genuine while nothing touches a socket. That is what makes the `502` and `504` paths testable at all.
 
 `tests/fake_upstream.py` is a separate manual fixture for driving a real misbehaving upstream on a spare port:
 
@@ -115,4 +128,6 @@ kubectl -n app-hub port-forward svc/gateway 8001:8001
 
 ## Background
 
-`learn/21` covers the design rationale — `async`/`await`, the shared client, the config boundary. `learn/22` records what was built.
+`learn/21` covers the design rationale — `async`/`await`, the shared client, the config boundary. `learn/27` covers the dashboard and the full proxy.
+
+There is no `learn/22`: steps 4–6 were delegated, and `learn/` files are written for hand-built work. An earlier version of this README pointed at it as though it existed.
