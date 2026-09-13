@@ -11,6 +11,7 @@ const el = {
   search: document.getElementById("search"),
   banner: document.getElementById("banner"),
   count: document.getElementById("count"),
+  summary: document.getElementById("summary"),
   form: document.getElementById("add-form"),
   toggle: document.getElementById("toggle-add"),
   cancel: document.getElementById("cancel-add"),
@@ -18,6 +19,10 @@ const el = {
 };
 
 let allLinks = [];
+
+// id -> probe result, from aggregator via gateway. Empty until /status
+// answers, and empty forever if it does not -- see loadStatus().
+let statusById = new Map();
 
 // gateway's whole reason to exist is that it distinguishes these. Showing the
 // user "something went wrong" for all three would throw that away at the last
@@ -146,6 +151,24 @@ function row(link) {
   host.textContent = href ? hostOf(link.url) : "unsupported URL";
   a.append(host);
 
+  // Liveness dot. "unknown" is its own state rather than being drawn as
+  // down: aggregator not having answered yet says nothing about the link,
+  // and a grey dot that means "not asked" is honest where a red one would
+  // be a lie.
+  const probe = statusById.get(link.id);
+  const dot = document.createElement("span");
+  dot.className = `dot ${probe ? probe.status : "unknown"}`;
+  dot.setAttribute("aria-hidden", "true");
+  if (probe) {
+    const bits = [probe.status];
+    if (probe.http_status) bits.push(`HTTP ${probe.http_status}`);
+    if (probe.latency_ms != null) bits.push(`${probe.latency_ms} ms`);
+    if (probe.detail) bits.push(probe.detail);
+    dot.title = bits.join(" · ");
+  } else {
+    dot.title = "not checked";
+  }
+
   const del = document.createElement("button");
   del.className = "del";
   del.type = "button";
@@ -154,7 +177,7 @@ function row(link) {
   del.setAttribute("aria-label", `Delete ${link.name}`);
   del.addEventListener("click", () => remove(link));
 
-  li.append(icon, a, del);
+  li.append(dot, icon, a, del);
   return li;
 }
 
@@ -187,6 +210,31 @@ async function load() {
   } catch (err) {
     showError(err.status, err.detail);
     el.links.setAttribute("aria-busy", "false");
+    return;
+  }
+  // Deliberately NOT awaited. The catalogue is the page; liveness is a
+  // decoration on it. Awaiting this would make the dashboard as slow as the
+  // slowest server anyone ever bookmarked.
+  loadStatus();
+}
+
+async function loadStatus() {
+  try {
+    const report = await api("GET", "/status");
+    statusById = new Map(report.links.map((l) => [l.id, l.probe]));
+    applyFilter();
+    const s = report.summary;
+    el.summary.textContent =
+      `${s.up} up · ${s.down} down` + (s.blocked ? ` · ${s.blocked} blocked` : "");
+    el.summary.title = report.cached
+      ? `cached, ${report.age_seconds}s old`
+      : "just checked";
+  } catch {
+    // aggregator being down is NOT a dashboard failure, and must not raise
+    // the error banner -- the links still work, they are what the page is
+    // for. The dots simply stay grey, which is what "unknown" means.
+    statusById = new Map();
+    el.summary.textContent = "";
   }
 }
 

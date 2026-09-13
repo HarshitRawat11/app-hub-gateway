@@ -137,6 +137,22 @@ li {
 
 li:hover { border-color: var(--muted); }
 
+/* Liveness dot (S-02). Colour is never the only signal -- every dot carries a
+   title with the status word, the HTTP code and the latency, because roughly
+   1 in 12 men cannot reliably separate the red from the green. */
+.dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.dot.up      { background: var(--accent); }
+.dot.down    { background: var(--danger); }
+.dot.blocked { background: var(--muted); box-shadow: 0 0 0 2px var(--danger); }
+.dot.unknown { background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
+
 .icon { flex: none; width: 1.4rem; text-align: center; font-size: 1.05rem; }
 
 li a {

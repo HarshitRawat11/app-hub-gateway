@@ -202,3 +202,77 @@ def test_new_routes_never_leak_the_upstream_address(method, path, body):
     for leak in ("localhost", "links-service:8000", "links-service:80",
                  "http://", "8000"):
         assert leak not in r.text
+
+
+# ------------------------------------------------- the aggregator hop (S-02) --
+
+STATUS_BODY = {
+    "checked_at": 1.0, "age_seconds": 0.0, "cached": False,
+    "summary": {"total": 1, "up": 1, "down": 0, "blocked": 0},
+    "links": [{**LINK, "probe": {"status": "up", "http_status": 200,
+                                 "latency_ms": 12, "detail": None}}],
+}
+
+
+def test_status_is_proxied_to_the_aggregator_not_links_service():
+    """The hop S-02 exists to prove.
+
+    browser -> gateway -> aggregator -> links-service. Neither end of the
+    inner call is the front door, which is what makes it a real test of
+    Kubernetes DNS rather than a restatement of "the entry point can reach a
+    service". This asserts gateway addresses the AGGREGATOR base, because
+    sending it to links-service would 404 and look like an aggregator bug.
+    """
+    seen = {}
+
+    def handler(request):
+        seen["url"] = str(request.url)
+        return httpx2.Response(200, json=STATUS_BODY)
+
+    with gateway_with_upstream(handler) as c:
+        r = c.get("/status")
+
+    assert r.status_code == 200
+    assert r.json() == STATUS_BODY
+    from app import main
+    assert seen["url"].startswith(main.AGGREGATOR_URL)
+    assert "/status" in seen["url"]
+
+
+def test_refresh_is_forwarded():
+    seen = {}
+
+    def handler(request):
+        seen["url"] = str(request.url)
+        return httpx2.Response(200, json=STATUS_BODY)
+
+    with gateway_with_upstream(handler) as c:
+        c.get("/status?refresh=true")
+    assert "refresh=true" in seen["url"]
+
+
+@pytest.mark.parametrize("failure,expected", [
+    (raises(httpx2.ConnectError("refused")), 503),
+    (raises(httpx2.ReadTimeout("slow")), 504),
+    (responds(500, {"detail": "boom"}), 502),
+])
+def test_aggregator_failures_name_the_aggregator(failure, expected):
+    """The detail must say which service to go and look at.
+
+    Reporting an aggregator outage as "links-service unavailable" would send
+    someone to debug a service that is working perfectly. The whole reason
+    gateway distinguishes 502/503/504 is to point at the right machine, and
+    naming the wrong one throws that away at the last step.
+    """
+    with gateway_with_upstream(failure) as c:
+        r = c.get("/status")
+    assert r.status_code == expected
+    assert "aggregator" in r.json()["detail"]
+    assert "links-service" not in r.json()["detail"]
+
+
+def test_aggregator_errors_still_do_not_leak_the_address():
+    with gateway_with_upstream(raises(httpx2.ConnectError("boom"))) as c:
+        r = c.get("/status")
+    for leak in ("localhost", "aggregator:8002", "http://", "8002"):
+        assert leak not in r.text

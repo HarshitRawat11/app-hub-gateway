@@ -23,6 +23,17 @@ logger = logging.getLogger(__name__)
 # the URL looks correct.
 LINKS_SERVICE_URL = os.getenv("LINKS_SERVICE_URL", "http://localhost:8000").rstrip("/")
 
+# aggregator (S-02). Same shape as LINKS_SERVICE_URL above, for the same
+# reasons -- default that works on a laptop, Deployment env: overrides it.
+#
+# gateway MUST proxy this rather than the dashboard calling aggregator
+# directly, and that is not a style choice: aggregator is ClusterIP and never
+# publicly reachable, and the dashboard is same-origin with no CORS. So the
+# browser can only reach it through here. That constraint is what makes
+# gateway -> aggregator -> links-service a real pod-to-pod call rather than a
+# diagram.
+AGGREGATOR_URL = os.getenv("AGGREGATOR_URL", "http://localhost:8002").rstrip("/")
+
 # The dashboard (S-03). Resolved from __file__ rather than the process's
 # working directory, because uvicorn can be started from anywhere and a
 # relative path would work in dev and 404 in the container.
@@ -46,7 +57,8 @@ def health():
 
 # ---------------------------------------------------------------- the proxy --
 
-async def _proxy(method: str, path: str, json_body=None, passthrough=frozenset()):
+async def _proxy(method: str, path: str, json_body=None, passthrough=frozenset(),
+                 base: str | None = None, name: str = "links-service"):
     """Call links-service and map its failures onto gateway's own.
 
     The exception handling here is unchanged from the owner-written version in
@@ -66,7 +78,10 @@ async def _proxy(method: str, path: str, json_body=None, passthrough=frozenset()
       - `POST /links` with a bad body -- 422 is about what the CALLER sent.
         Reporting that as 502 sends them looking at the wrong machine.
     """
-    url = f"{LINKS_SERVICE_URL}{path}"
+    # Read from the module at CALL time, not as a default argument -- a
+    # default is bound once at import and would survive the reload the config
+    # tests do, quietly pinning the old value.
+    url = f"{base or LINKS_SERVICE_URL}{path}"
     try:
         response = await app.state.http_client.request(method, url, json=json_body)
     except httpx2.TimeoutException:
@@ -75,10 +90,10 @@ async def _proxy(method: str, path: str, json_body=None, passthrough=frozenset()
         # is internal topology, and the caller has no business seeing it. The
         # real error goes to the logs, where it is actually useful.
         logger.warning("timeout after 3s calling %s %s", method, url)
-        raise HTTPException(status_code=504, detail="links-service timed out")
+        raise HTTPException(status_code=504, detail=f"{name} timed out")
     except httpx2.RequestError as e:
         logger.warning("cannot reach %s %s: %s", method, url, e)
-        raise HTTPException(status_code=503, detail="links-service unavailable")
+        raise HTTPException(status_code=503, detail=f"{name} unavailable")
 
     if response.status_code in passthrough:
         # Forward the upstream body for these, unlike the generated errors
@@ -96,13 +111,13 @@ async def _proxy(method: str, path: str, json_body=None, passthrough=frozenset()
             logger.warning("%s %s returned non-JSON HTTP %s",
                            method, url, response.status_code)
             raise HTTPException(status_code=502,
-                                detail="links-service returned an error")
+                                detail=f"{name} returned an error")
         detail = body.get("detail", body) if isinstance(body, dict) else body
         raise HTTPException(status_code=response.status_code, detail=detail)
 
     if response.status_code >= 400:
         logger.warning("%s %s returned HTTP %s", method, url, response.status_code)
-        raise HTTPException(status_code=502, detail="links-service returned an error")
+        raise HTTPException(status_code=502, detail=f"{name} returned an error")
 
     return response
 
@@ -141,6 +156,23 @@ async def create_link(response: Response, payload: dict = Body(...)):
 @app.delete("/links/{link_id}")
 async def delete_link(link_id: str):
     response = await _proxy("DELETE", f"/links/{link_id}", passthrough={404})
+    return response.json()
+
+
+@app.get("/status")
+async def status(refresh: bool = False):
+    """Liveness of every catalogued link, from aggregator.
+
+    The chain this completes is the point of S-02: browser -> gateway ->
+    aggregator -> links-service. Neither end of the inner hop is the front
+    door, which is what makes it a real test of Kubernetes DNS rather than a
+    restatement of "the entry point can reach a service".
+
+    No `passthrough`: aggregator answers 200 with links marked down, so any
+    4xx/5xx from it really is a fault.
+    """
+    response = await _proxy("GET", f"/status?refresh={str(refresh).lower()}",
+                            base=AGGREGATOR_URL, name="aggregator")
     return response.json()
 
 
