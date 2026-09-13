@@ -128,6 +128,6 @@ kubectl -n app-hub port-forward svc/gateway 8001:8001
 
 ## Background
 
-`learn/21` covers the design rationale — `async`/`await`, the shared client, the config boundary. `learn/27` covers the dashboard and the full proxy.
+`learn/21` covers the design rationale — `async`/`await`, the shared client, the config boundary. `learn/22` records what steps 4–5 turned into. `learn/27` covers the dashboard and the full proxy.
 
-There is no `learn/22`: steps 4–6 were delegated, and `learn/` files are written for hand-built work. An earlier version of this README pointed at it as though it existed.
+*(An earlier edit of this README claimed `learn/22` did not exist. It does, and it is indexed — the claim came from an outdated plan rather than from looking. Delegated work gets a short `learn/` note under the two-tier rule; it is only the seven-section files that are reserved for hand-built work.)*
