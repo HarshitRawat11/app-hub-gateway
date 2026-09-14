@@ -6,6 +6,7 @@ from pathlib import Path
 import httpx2
 import logging
 import os
+from prometheus_fastapi_instrumentator import Instrumentator
 
 logger = logging.getLogger(__name__)
 
@@ -219,3 +220,24 @@ def dashboard():
 
 
 app.mount("/static", RevalidatingStatic(directory=STATIC_DIR), name="static")
+
+# ---------------------------------------------------------------------------
+# /metrics for Prometheus (R-05).
+#
+# `instrument(app)` adds middleware that times every request; `expose(app)`
+# adds the /metrics endpoint Prometheus scrapes. Both at module scope, because
+# middleware has to be registered before the app starts serving.
+#
+# WHY A LIBRARY AND NOT A HAND-ROLLED COUNTER: the hard part of this is not
+# counting requests, it is LABEL CARDINALITY. A naive implementation labels by
+# the request path, so `/links/<uuid>` creates a brand new time series per id
+# -- and with server-generated UUIDs that is unbounded. Prometheus holds
+# series in memory; unbounded cardinality is the classic way to OOM it. This
+# library groups by the ROUTE TEMPLATE (`/links/{link_id}`) instead, so the
+# series count is bounded by the number of routes.
+#
+# Deliberately exposed on the same port as the app, not a second one. A
+# separate metrics port would need another containerPort, another Service
+# port and another ServiceMonitor endpoint, to hide something that is not
+# secret -- request counts and latencies, on a ClusterIP service.
+Instrumentator().instrument(app).expose(app)
