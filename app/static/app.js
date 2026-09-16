@@ -141,6 +141,27 @@ function row(link) {
   const a = document.createElement(href ? "a" : "span");
   if (href) {
     a.href = href;
+    // New TAB, not a new window -- "_blank" means "a fresh browsing context",
+    // and every current browser satisfies that with a tab unless the user has
+    // configured otherwise. There is deliberately no way to force a tab from
+    // JavaScript, and trying (window.open with features) is what actually
+    // produces a popup window.
+    //
+    // This dashboard is a launcher: you open Grafana, look at something, and
+    // come back. Replacing the page each time means re-fetching /links and
+    // /status on every trip back, and losing whatever you had typed in the
+    // search box.
+    a.target = "_blank";
+    // rel was ALREADY here before target was, which is the wrong way round --
+    // this is precisely the mitigation that target="_blank" requires, and it
+    // sat here guarding against nothing until 2026-09-16.
+    //
+    // noopener stops the opened page reaching back through window.opener to
+    // navigate this one (reverse tabnabbing) -- and these URLs are attacker-
+    // controlled in the sense that anything able to POST to the API chooses
+    // them. noreferrer additionally withholds the Referer header, so a
+    // self-hosted dashboard does not announce its own address to every site
+    // it links to.
     a.rel = "noopener noreferrer";
   }
   a.textContent = link.name;

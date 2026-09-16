@@ -25,6 +25,7 @@ import importlib
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
+from prometheus_client import REGISTRY
 
 from app import main
 from app.main import app
@@ -207,14 +208,54 @@ def test_health_does_not_depend_on_the_upstream():
 
 # ------------------------------------------------------------------- config --
 
+def reload_main():
+    """`importlib.reload(main)`, but without silently killing /metrics.
+
+    THE BUG THIS EXISTS FOR, found 2026-09-16 and worth reading before
+    touching any of it.
+
+    `app/main.py` runs `Instrumentator().instrument(app).expose(app)` at import
+    time, and prometheus_client keeps its collectors in a process-wide
+    REGISTRY. Reloading the module builds a NEW app and tries to register the
+    same collector names again. That duplicate is swallowed rather than raised,
+    and the result is an app whose middleware is wired up and whose metrics are
+    inert: **every request through the reloaded app records nothing at all.**
+
+    Nothing fails at the point of damage. The old collectors are still in the
+    registry holding their old values, so `/metrics` keeps returning a
+    plausible-looking body -- just one frozen at the moment of the reload. Any
+    later test that asserts on metrics is then reading a corpse.
+
+    Measured, not reasoned about:
+
+        fresh import, 3 hits             http_requests_total{...} 3.0
+        DIRTY reload, +5 hits            http_requests_total{...} 3.0   <- dead
+        CLEAN reload (cleared), +5 hits  http_requests_total{...} 5.0   <- alive
+
+    That is what broke `test_metrics.py::test_ids_do_not_become_labels`, which
+    passed alone and failed in the suite for two days. **The application was
+    never affected** -- production imports the module exactly once, and the
+    live behaviour was confirmed correct against a running server. This is a
+    test-harness artifact, and it is the reason a flaky test is worse than no
+    test: it went red for a reason that had nothing to do with what it guards.
+
+    Unregistering first means the fresh import registers cleanly. Counters
+    restart at zero, which is correct -- the process just rebuilt the app.
+    """
+    for collector in list(REGISTRY._collector_to_names):
+        if any(n.startswith("http_") for n in REGISTRY._get_names(collector)):
+            REGISTRY.unregister(collector)
+    return importlib.reload(main)
+
+
 def test_links_service_url_defaults_to_localhost(monkeypatch):
     monkeypatch.delenv("LINKS_SERVICE_URL", raising=False)
-    reloaded = importlib.reload(main)
+    reloaded = reload_main()
     try:
         assert reloaded.LINKS_SERVICE_URL == "http://localhost:8000"
     finally:
         monkeypatch.undo()
-        importlib.reload(main)
+        reload_main()
 
 
 def test_links_service_url_strips_a_trailing_slash(monkeypatch):
@@ -224,9 +265,9 @@ def test_links_service_url_strips_a_trailing_slash(monkeypatch):
     the URL looks correct in every log line.
     """
     monkeypatch.setenv("LINKS_SERVICE_URL", "http://links-service:8000/")
-    reloaded = importlib.reload(main)
+    reloaded = reload_main()
     try:
         assert reloaded.LINKS_SERVICE_URL == "http://links-service:8000"
     finally:
         monkeypatch.undo()
-        importlib.reload(main)
+        reload_main()

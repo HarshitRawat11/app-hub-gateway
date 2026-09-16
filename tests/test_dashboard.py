@@ -124,6 +124,27 @@ def test_link_urls_are_scheme_checked_before_reaching_an_href():
         "href must be assigned only from the checked value"
 
 
+def test_links_open_in_a_new_tab_and_carry_the_matching_rel():
+    """`target="_blank"` and `rel="noopener noreferrer"` are ONE decision.
+
+    The dashboard is a launcher: you open Grafana, look at something, and come
+    back. Navigating the tab away means re-fetching /links and /status on every
+    return trip, and losing whatever was typed in the search box.
+
+    The two attributes are asserted together on purpose. `rel` shipped first
+    and sat here guarding nothing until 2026-09-16, because `target` had been
+    forgotten -- so this pins the pair rather than either half. Without
+    `noopener`, the opened page can reach back through `window.opener` and
+    navigate this one (reverse tabnabbing), and these URLs are chosen by
+    anything that can POST to the API.
+    """
+    js = strip_comments((STATIC_DIR / "app.js").read_text(encoding="utf-8"))
+    assert re.search(r'a\.target\s*=\s*["\']_blank["\']', js), \
+        "link anchors must open in a new tab"
+    assert re.search(r'a\.rel\s*=\s*["\']noopener noreferrer["\']', js), \
+        'target="_blank" without rel="noopener" allows reverse tabnabbing'
+
+
 def test_the_dashboard_calls_the_api_on_its_own_origin():
     """No absolute URLs to the API in the page's JavaScript.
 
