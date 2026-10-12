@@ -9,11 +9,42 @@
        outbound internet guaranteed, and a start page that goes blank because
        a CDN is down is not a start page. -->
   <link rel="stylesheet" href="/static/style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🗂️</text></svg>">
+  <!-- SVG first: it carries its own prefers-color-scheme rules, so the
+       mark follows the tab bar rather than fighting it. The PNGs are the
+       fallback for Safari, which does not support SVG favicons at all, and
+       icon-180 is what iOS and Android use for a home-screen shortcut. -->
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="/static/icon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="/static/icon-180.png">
 </head>
 <body>
   <header>
-    <h1>app-hub</h1>
+    <h1>
+      <!-- THE HUB MARK. Inline rather than <img src="logo.svg"> on purpose:
+           inline SVG inherits currentColor and var(--accent) from the tokens
+           in style.css, so the mark follows the light/dark switch with no
+           second copy of the palette to drift out of sync. An <img> is an
+           opaque document and would need its own hardcoded colours.
+           aria-hidden because the wordmark right next to it already reads
+           "app-hub"; announcing it twice is worse than not at all. -->
+      <svg class="logo" viewBox="0 0 32 32" width="20" height="20"
+           aria-hidden="true" focusable="false">
+        <g fill="currentColor" stroke="currentColor">
+          <line x1="16" y1="16" x2="16" y2="4.6" stroke-width="1.9" stroke-linecap="round" opacity="0.5"/>
+          <line x1="16" y1="16" x2="27.4" y2="16" stroke-width="1.9" stroke-linecap="round" opacity="0.5"/>
+          <line x1="16" y1="16" x2="16" y2="27.4" stroke-width="1.9" stroke-linecap="round" opacity="0.5"/>
+          <line x1="16" y1="16" x2="4.6" y2="16" stroke-width="1.9" stroke-linecap="round" opacity="0.5"/>
+          <circle cx="16" cy="4.6" r="2.9"/>
+          <circle cx="27.4" cy="16" r="2.9"/>
+          <circle cx="16" cy="27.4" r="2.9"/>
+          <circle cx="4.6" cy="16" r="2.9"/>
+        </g>
+        <!-- The core is the accent green -- deliberately the same token as the
+             liveness dot on every row below. -->
+        <circle cx="16" cy="16" r="5.2" fill="var(--accent, #2f6f4f)"/>
+      </svg>
+      app-hub
+    </h1>
     <input id="search" type="search" placeholder="Search…  (press /)"
            autocomplete="off" spellcheck="false" aria-label="Filter links">
     <button id="toggle-add" type="button" aria-expanded="false">+ Add</button>

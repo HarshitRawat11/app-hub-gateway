@@ -51,11 +51,21 @@ header {
 }
 
 h1 {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
   margin: 0;
   font-size: 1.15rem;
   font-weight: 650;
   letter-spacing: -0.01em;
 }
+
+/* The mark is INLINE rather than an <img> so it inherits currentColor and
+   --accent from the tokens above. One source of truth for the palette, and it
+   follows the light/dark switch with no second copy of the colours to drift.
+   aria-hidden because the wordmark beside it already says "app-hub" --
+   announcing it twice is worse than not announcing it at all. */
+.logo { flex: none; width: 1.4rem; height: 1.4rem; }
 
 input, button {
   font: inherit;
